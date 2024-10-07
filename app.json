@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Whatsupnonumber",
+    "slug": "Whatsupnonumber",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icons8-whatsapp-1024.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/icons8-whatsapp-1024.png",
+      "resizeMode": "contain",
+
+      "backgroundColor": "#ffffff",
+      
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.jadIssa.whatsupnonumber"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icons8-whatsapp-1024.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.jadIssa.whatsupnonumber"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "d1eb4b4d-3c5c-4223-95c6-ecc8e09e3e07"
+      }
+    },
+    "owner": "abdullah_122"
+  }
+}
