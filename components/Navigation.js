@@ -97,6 +97,7 @@ const MainScreens = ({navigation}) => (
             options={{
                 headerShown: true,
                 headerTitle: "Whatsapp.X.no",
+                headerTintColor: "#00e5e5",
                 headerRight: () => {
                     return (
                         <TouchableOpacity onPress={() => navigation.navigate("OtherScreens", {screen: "Profile"})} className="mr-4">
@@ -170,7 +171,7 @@ const OtherScreens = ({ navigation }) => {
                     return (
                         <View className="flex flex-row items-center gap-3 mr-3">
                             <Icon name="chevron-back-outline" size={22} className="mr-5" onPress={() => navigation.goBack()}/>
-                            <Image source={profile} className="w-12 h-12 rounded-full"/>
+                            <Image source={route.params.profile ? {uri: route.params.profile}: profile} className="w-12 h-12 rounded-full"/>
                         </View>
                     )
                 }

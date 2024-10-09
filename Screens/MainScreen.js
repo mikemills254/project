@@ -6,7 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../Utilities/Firebaseconfig';
 import { useSelector } from 'react-redux';
-import { format } from 'date-fns'; 
+import { format, isToday, isYesterday } from 'date-fns'; 
 import { useIsFocused } from '@react-navigation/native'
 import Icon from "react-native-vector-icons/Ionicons"
 import { StatusBar } from 'expo-status-bar';
@@ -99,6 +99,21 @@ const MessageList = () => {
     };
 
     const today = new Date().toLocaleDateString();
+    console.log("today", today)
+
+    const formatMessageDate = (timestamp) => {
+        if (!timestamp) return '';
+        
+        const messageDate = new Date(timestamp);
+        
+        if (isToday(messageDate)) {
+            return format(messageDate, 'HH:mm'); // Only show time for today
+        } else if (isYesterday(messageDate)) {
+            return 'Yesterday';
+        } else {
+            return format(messageDate, 'dd/MM/yyyy'); // Show full date for older messages
+        }
+    };
 
     return (
         <View className="flex-1 bg-white p-3">
@@ -113,39 +128,42 @@ const MessageList = () => {
             <FlatList
                 data={filteredMessages}
                 keyExtractor={item => item.partner.id}
-                renderItem={({ item }) => (
-                    <Pressable
-                        onPress={() => navigation.navigate("OtherScreens", {
-                            screen: "Chat",
-                            params: {
-                                id: item.partner.id,
-                                mail: item.partner.email,
-                                name: item.partner.name
-                            }
-                        })}
-                        key={item.id}
-                        className="flex flex-row p-2 w-full items-center bg-white"
-                    >
-                        <View className="w-12 h-12 rounded-full overflow-hidden mr-2">
-                            <Image source={ profile } className="w-full h-full object-cover" />
-                        </View>
-
-                        <View className="flex-1 rounded-lg p-3 shadow-sm bg-white">
-                            <View className="flex flex-row justify-between">
-                                <Text className="text-base font-semibold text-gray-800">
-                                    {item.partner.name}
-                                </Text>
-                                <Text className="text-xs text-gray-500">
-                                    {formatTimestamp(item.timestamp) === today ? "Today" : formatTimestamp(item.timestamp)}
-                                </Text>
+                renderItem={({ item }) => {
+                    return (
+                        <Pressable
+                            onPress={() => navigation.navigate("OtherScreens", {
+                                screen: "Chat",
+                                params: {
+                                    id: item.partner.id,
+                                    mail: item.partner.email,
+                                    name: item.partner.name,
+                                    profile: item.partner.profile
+                                }
+                            })}
+                            key={item.id}
+                            className="flex flex-row p-2 w-full items-center bg-white"
+                        >
+                            <View className="w-12 h-12 rounded-full overflow-hidden mr-2">
+                                <Image source={item.partner.profile ? {uri: item.partner.profile}: profile } className="w-full h-full object-cover" />
                             </View>
 
-                            <Text className="text-sm text-gray-700 mt-1">
-                                {item.lastMessage}
-                            </Text>
-                        </View>
-                    </Pressable>
-                )}
+                            <View className="flex-1 rounded-lg p-3 shadow-sm bg-white">
+                                <View className="flex flex-row justify-between">
+                                    <Text className="text-base font-semibold text-gray-800">
+                                        {item.partner.name}
+                                    </Text>
+                                    <Text className="text-xs text-gray-500">
+                                        {formatMessageDate(item.timestamp)}
+                                    </Text>
+                                </View>
+
+                                <Text className="text-sm text-gray-700 mt-1">
+                                    {item.lastMessage}
+                                </Text>
+                            </View>
+                        </Pressable>
+                    )
+                }}
             />
             {
                 isFocused ? <FAB /> : null

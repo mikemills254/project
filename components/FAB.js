@@ -76,7 +76,7 @@ const FAB = () => {
 
                         {searchQuery.trim() !== "" && filteredUsers.length > 0 && (
                             <>
-                                {filteredUsers.map((user) => (
+                                {filteredUsers.map((user, index) => (
                                     <Pressable
                                         onPress={() => {
                                             navigation.navigate("OtherScreens", {
@@ -89,11 +89,11 @@ const FAB = () => {
                                                 }
                                             });
                                         }}  
-                                        key={user.id} className="bg-gray-100 shadow-md p-2 mb-2 flex flex-row items-center w-full"
+                                        key={index} className="bg-gray-100 shadow-md p-2 mb-2 flex flex-row items-center w-full"
                                     >
                                         <View className="h-12 w-12 rounded-full flex item-center justify-center border border-border bg-white">
                                             <Image
-                                                source={user.profile ? user.profile : profile}
+                                                source={user.profileImage ? {uri: user.profileImage} : profile}
                                                 className="w-full h-full rounded-full"
                                                  resizeMode="cover"
                                             />

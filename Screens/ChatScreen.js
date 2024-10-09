@@ -96,7 +96,8 @@ export default function ChatScreen({ route, navigation }) {
 
     const groupMessagesByDate = (messages) => {
         return messages.reduce((acc, message) => {
-            const date = new Date(message.timestamp).toLocaleDateString(); // Format date as needed
+            const messageTimestamp = message.timestamp?.toDate?.() || new Date(message.timestamp);
+            const date = messageTimestamp.toISOString().split('T')[0]; // Use ISO string for consistent formatting
             if (!acc[date]) {
                 acc[date] = [];
             }
@@ -188,6 +189,32 @@ export default function ChatScreen({ route, navigation }) {
         console.log("askdjkla")
     }
 
+    const getDateLabel = (dateString) => {
+        const messageDate = new Date(dateString);
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        // Reset time part for accurate date comparison
+        const messageDateOnly = new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate());
+        const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate());
+
+        if (messageDateOnly.getTime() === todayOnly.getTime()) {
+            return 'Today';
+        } else if (messageDateOnly.getTime() === yesterdayOnly.getTime()) {
+            return 'Yesterday';
+        } else {
+            const options = { 
+                weekday: 'long', 
+                month: 'long', 
+                day: 'numeric',
+                year: messageDate.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+            };
+            return messageDate.toLocaleDateString('en-US', options);
+        }
+    };
+
     return (
         <View className="flex-1 bg-gray-100">
             <ScrollView
@@ -197,7 +224,7 @@ export default function ChatScreen({ route, navigation }) {
                 {Object.keys(groupedMessages).map((date) => (
                     <View key={date} className="mb-4">
                         <Text className="font-medium text-center text-gray-400">
-                            {date === today ? 'Today' : date}
+                            {getDateLabel(date)}
                         </Text>
                          
                         {groupedMessages[date].map((message) => (
@@ -237,7 +264,7 @@ export default function ChatScreen({ route, navigation }) {
 
                 <TouchableOpacity onPress={handleSendMessage} className="ml-3">
                     {
-                        isLoading ? <ActivityIndicator/> : <Ionicons name='send' size={24} color="#0084ff"/>
+                        isLoading ? <ActivityIndicator/> : <Ionicons name='send' size={24} color="gray"/>
                     }
                 </TouchableOpacity>
             </View>
