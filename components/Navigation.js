@@ -1,5 +1,5 @@
 import React from 'react'
-import { TouchableOpacity, View, Image, Text } from 'react-native';
+import { TouchableOpacity, View, Image, Text, Pressable } from 'react-native';
 import SignupScreen from "../Screens/SignUpScreen";
 import LoginScreen from "../Screens/LoginScreen";
 import ForgetPasswordScreen from "../Screens/ForgetPasswordScreen";
@@ -12,6 +12,9 @@ import AntDesign from 'react-native-vector-icons/AntDesign'
 import Icon from "react-native-vector-icons/Ionicons"
 import profile from "../assets/blank-profile-picture-973460_1280.png"
 import CreateGroup from "../Screens/CreateGroup"
+import FontAwesome from "react-native-vector-icons/FontAwesome"
+import GroupDetails from '../Screens/GroupDetails';
+import UserProfile from '../Screens/UserProfile';
 
 
 import { NavigationContainer } from '@react-navigation/native';
@@ -68,12 +71,16 @@ const MainScreens = ({navigation}) => (
                     color = focused ? '#00e5e5' : 'black';
                     size = focused ? 25 : 20;
                 } else if (route.name === 'Groups') {
-                    iconName = focused ? 'calendar' : 'calendar';
+                    iconName = focused ? 'group' : 'group';
+                    color = focused ? '#00e5e5' : 'black';
+                    size = focused ? 25 : 20
+                } else if (route.name === "Profile"){
+                    iconName = focused ? "user-circle-o" : "user-circle-o"
                     color = focused ? '#00e5e5' : 'black';
                     size = focused ? 25 : 20
                 }
 
-                return <AntDesign name={iconName} color={color} size={size} />;
+                return <FontAwesome name={iconName} color={color} size={size} />;
             },
             tabBarStyle: {
                 height: 60,
@@ -97,7 +104,7 @@ const MainScreens = ({navigation}) => (
             options={{
                 headerShown: true,
                 headerTitle: "Whatsapp.X.no",
-                headerTintColor: "#00e5e5",
+                headerTintColor: "#000000",
                 headerRight: () => {
                     return (
                         <TouchableOpacity onPress={() => navigation.navigate("OtherScreens", {screen: "Profile"})} className="mr-4">
@@ -115,13 +122,6 @@ const MainScreens = ({navigation}) => (
                 title: "Groups",
                 headerTitle: "Your Groups",
                 headerShown: true,
-                headerLeft: () => {
-                    return (
-                        <TouchableOpacity className="ml-5">
-                            <Icon name="chevron-back-outline" size={24}/>
-                        </TouchableOpacity>
-                    )
-                },
                 headerRight: () => {
                     return (
                         <TouchableOpacity onPress={() => navigation.navigate("OtherScreens", {screen: "CreateGroup"})} className="mr-5">
@@ -129,6 +129,13 @@ const MainScreens = ({navigation}) => (
                         </TouchableOpacity>
                     )
                 }
+            }}
+        />
+        <Tab.Screen
+            name="Profile"
+            component={ProfileScreen}
+            options={{
+                headerShown: false
             }}
         />
         
@@ -171,11 +178,21 @@ const OtherScreens = ({ navigation }) => {
                     return (
                         <View className="flex flex-row items-center gap-3 mr-3">
                             <Icon name="chevron-back-outline" size={22} className="mr-5" onPress={() => navigation.goBack()}/>
-                            <Image source={route.params.profile ? {uri: route.params.profile}: profile} className="w-12 h-12 rounded-full"/>
+                                <Pressable onPress={() => navigation.navigate("Profiles", { params: route.params.id})}>
+                                    <Image
+                                        source={route.params.profile ? {uri: route.params.profile}: profile}
+                                        className="w-12 h-12 rounded-full"
+                                    />
+                                </Pressable>
                         </View>
                     )
                 }
             })}
+        />
+        <Stack.Screen
+            name="Profiles"
+            component={UserProfile}
+            options={{ headerShown: false }}
         />
         <Stack.Screen
             name="CreateGroup"
@@ -185,16 +202,32 @@ const OtherScreens = ({ navigation }) => {
         <Stack.Screen
             name="GroupChat"
             component={GroupScreen}
-            options={({ route }) => ({
-                title: route.params.name,
-                headerLeft: () => {
-                    return (
-                        <View className="flex flex-row items-center gap-3 mr-3">
-                            <Icon name="chevron-back-outline" size={22} className="mr-5" onPress={() => navigation.goBack()}/>
-                            <Image source={route.params.profile ? {uri: route.params.profile} : profile} className="w-12 h-12 rounded-full"/>
-                        </View>
-                    )
-                }
+            options={({ route, navigation }) => ({
+                title: route.params?.name ?? "Chat",
+                headerLeft: () => (
+                    <TouchableOpacity 
+                        onPress={() => navigation.navigate("GroupDetails", {
+                            name: route.params?.name,
+                            profile: route.params?.profile ?? profile,
+                            id: route.params.id
+                        })}
+                        className="flex flex-row items-center gap-3 mr-3"
+                    >
+                        <Icon name="chevron-back-outline" size={22} className="mr-5" onPress={() => navigation.goBack()} />
+                        <Image 
+                            source={route.params?.profile ? { uri: route.params.profile } : profile} 
+                            className="w-12 h-12 rounded-full" 
+                        />
+                    </TouchableOpacity>
+                )
+            })}
+        />
+
+        <Stack.Screen
+            name="GroupDetails"
+            component={GroupDetails}
+            options={({route}) => ({
+                headerShown: false,
             })}
         />
         </Stack.Navigator>

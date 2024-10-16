@@ -5,6 +5,7 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from "../Utilities/Firebaseconfig";
 import FAB from '../components/FAB';
 import { useLayoutEffect } from 'react';
+import { StatusBar } from 'expo-status-bar';
 
 const formatTimestamp = (timestamp) => {
     if (!timestamp) return '';
@@ -92,9 +93,11 @@ export default function GroupScreen({ navigation }) {
                 </View>
             )}
             <View className="ml-4 flex-1">
-                <Text className="font-semibold text-lg">{item.name}</Text>
+                <Text  numberOfLines={2} 
+            ellipsizeMode="tail" className="font-semibold text-lg">{item.name}</Text>
                 <View className="flex-row justify-between">
-                <Text className="text-gray-500">
+                <Text numberOfLines={1} 
+            ellipsizeMode="tail"className="text-gray-500 ">
                         {item.lastMessage?.text}
                     </Text>
                     <Text className="text-gray-500">
@@ -108,9 +111,10 @@ export default function GroupScreen({ navigation }) {
 
     return (
         <View className="flex-1 bg-white">
+            <StatusBar style='dark'/>
             {loading ? (
                 <View className="flex-1 justify-center items-center">
-                    <ActivityIndicator size="large" color="#0000ff" />
+                    <ActivityIndicator size="large" color="#00e5e5" />
                 </View>
             ) : groups.length === 0 ? (
                 <View className="flex-1 justify-center items-center">

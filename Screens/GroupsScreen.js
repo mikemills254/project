@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity,
     Image, KeyboardAvoidingView, Platform, ActivityIndicator,
-    Alert, FlatList, Keyboard
+    Alert, FlatList, Keyboard, Animated
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import {
@@ -14,10 +14,21 @@ import { db, storage } from "../Utilities/Firebaseconfig";
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { useLayoutEffect } from 'react';
 import * as FileSystem from 'expo-file-system';
+import { StatusBar } from 'expo-status-bar';
+import * as VideoThumbnails from 'expo-video-thumbnails';
+import { Audio } from 'expo-av';
 import uuid from 'react-native-uuid';
 
+
+const MEDIA_OPTIONS = [
+    { id: 1, icon: 'image', label: 'Image', type: 'image' },
+    { id: 2, icon: 'document', label: 'Document', type: 'document' },
+    // { id: 3, icon: 'videocam', label: 'Video', type: 'video' },
+    // { id: 4, icon: 'mic', label: 'Audio', type: 'audio' },
+];
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 export default function ChatScreen({ route, navigation }) {
     const { name, id } = route.params;
@@ -26,25 +37,88 @@ export default function ChatScreen({ route, navigation }) {
     const [inputText, setInputText] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
-    const flatListRef = useRef();
+    const [attachMedia, setAttachMedia] = useState(false);
+    const flatListRef = useRef(null);
     const { userID, userName, email } = useSelector(state => state.auth.user);
     const [keyboardHeight, setKeyboardHeight] = useState(0);
+    const attachMenuAnimation = useRef(new Animated.Value(0)).current;
 
-    // Keyboard handling
     useEffect(() => {
-        const keyboardWillShowListener = Platform.OS === 'ios' 
-            ? Keyboard.addListener('keyboardWillShow', (e) => setKeyboardHeight(e.endCoordinates.height))
-            : Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates.height));
+        const keyboardWillShowListener = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+            e => setKeyboardHeight(e.endCoordinates.height)
+        );
         
-        const keyboardWillHideListener = Platform.OS === 'ios'
-            ? Keyboard.addListener('keyboardWillHide', () => setKeyboardHeight(0))
-            : Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+        const keyboardWillHideListener = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+            () => setKeyboardHeight(0)
+        );
 
         return () => {
             keyboardWillShowListener.remove();
             keyboardWillHideListener.remove();
         };
     }, []);
+
+    useEffect(() => {
+        navigation.setOptions({
+            headerShown: true,
+            headerRight: () => (
+                <TouchableOpacity
+                    onPress={handleExitConfirmation}
+                    className="px-4 py-2"
+                >
+                    <Text className="text-red-500 font-semibold">Leave</Text>
+                </TouchableOpacity>
+            )
+        });
+    }, [navigation]);
+
+    useEffect(() => {
+        const q = query(
+            collection(db, `s/${name}/messages`),
+            orderBy('createdAt', 'asc')
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const newMessages = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            
+            const grouped = newMessages.reduce((acc, message) => {
+                if (!message.createdAt) return acc;
+                
+                const dateLabel = getDateLabel(message.createdAt);
+                if (!acc[dateLabel]) {
+                    acc[dateLabel] = [];
+                }
+                acc[dateLabel].push(message);
+                return acc;
+            }, {});
+            
+            const groupedArray = Object.entries(grouped).map(([date, msgs]) => ({
+                title: date,
+                data: msgs
+            }));
+            
+            setGroupedMessages(groupedArray);
+            setMessages(newMessages);
+        });
+
+        return () => unsubscribe();
+    }, [name]);
+
+    const handleExitConfirmation = () => {
+        Alert.alert(
+            "Leave Group",
+            "Are you sure you want to leave this group?",
+            [
+                { text: "Cancel", style: "cancel" },
+                { text: "Leave", onPress: handleExit, style: "destructive" }
+            ]
+        );
+    };
 
     const handleExit = async () => {
         const groupRef = doc(db, "groups", id);    
@@ -77,29 +151,6 @@ export default function ChatScreen({ route, navigation }) {
         }
     };
 
-    useLayoutEffect(() => {
-        navigation.setOptions({
-            headerShown: true,
-            headerRight: () => (
-                <TouchableOpacity
-                    onPress={() => {
-                        Alert.alert(
-                            "Leave Group",
-                            "Are you sure you want to leave this group?",
-                            [
-                                { text: "Cancel", style: "cancel" },
-                                { text: "Leave", onPress: handleExit, style: "destructive" }
-                            ]
-                        );
-                    }}
-                    className="px-4 py-2"
-                >
-                    <Text className="text-red-500 font-semibold">Leave</Text>
-                </TouchableOpacity>
-            )
-        });
-    }, [navigation]);
-
     const getDateLabel = (timestamp) => {
         const messageDate = timestamp.toDate();
         const today = new Date();
@@ -119,61 +170,41 @@ export default function ChatScreen({ route, navigation }) {
         }
     };
 
-    useEffect(() => {
-        const q = query(
-            collection(db, `s/${name}/messages`),
-            orderBy('createdAt', 'asc')
-        );
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const newMessages = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            console.log("message", newMessages[newMessages.length - 1])
-            
-            const grouped = newMessages.reduce((acc, message) => {
-                if (!message.createdAt) return acc;
-                
-                const dateLabel = getDateLabel(message.createdAt);
-                if (!acc[dateLabel]) {
-                    acc[dateLabel] = [];
-                }
-                acc[dateLabel].push(message);
-                return acc;
-            }, {});
-            
-            const groupedArray = Object.entries(grouped).map(([date, msgs]) => ({
-                title: date,
-                data: msgs
-            }));
-            
-            setGroupedMessages(groupedArray);
-            setMessages(newMessages);
-        });
-
-        return () => unsubscribe();
-    }, []);
-
     const updateLatestMessage = async (messageData) => {
         try {
             const groupRef = doc(db, "groups", id);
+            let lastMessageText = '';
+    
+            switch (messageData.type) {
+                case 'text':
+                    lastMessageText = messageData.text;
+                    break;
+                case 'image':
+                    lastMessageText = '📷 Image';
+                    break;
+                case 'document':
+                    lastMessageText = `📄 ${messageData.fileName}`;
+                    break;
+                case 'video':
+                    lastMessageText = '🎥 Video';
+                    break;
+                case 'audio':
+                    lastMessageText = '🎵 Audio';
+                    break;
+                default:
+                    lastMessageText = 'New message';
+            }
+    
             const lastMessage = {
-                text: messageData.text || '',
-                type: messageData.type || 'text',
+                text: lastMessageText,
+                type: messageData.type,
                 sender: {
                     userID: messageData.sender.userID,
                     userName: messageData.sender.userName
                 },
-                timestamp: messageData.createdAt
+                timestamp: messageData.createdAt || serverTimestamp()
             };
-
-            if (messageData.type === 'image') {
-                lastMessage.text = '📷 Image';
-            } else if (messageData.type === 'document') {
-                lastMessage.text = `📄 ${messageData.fileName}`;
-            }
-
+    
             await updateDoc(groupRef, { lastMessage });
         } catch (error) {
             console.error("Error updating last message:", error);
@@ -192,9 +223,12 @@ export default function ChatScreen({ route, navigation }) {
                     userName,
                     email
                 },
+                type: "text",
                 createdAt: serverTimestamp(),
                 ...fileData
             };
+
+            console.log("the message", messageData)
 
             await addDoc(collection(db, `s/${name}/messages`), messageData);
             await updateLatestMessage(messageData);
@@ -205,31 +239,6 @@ export default function ChatScreen({ route, navigation }) {
             Alert.alert('Error', 'Failed to send message. Please try again.');
         } finally {
             setIsLoading(false);
-        }
-    };
-
-    const uploadFile = async (uri, type, fileName = null) => {
-        try {
-            const response = await fetch(uri);
-            const blob = await response.blob();
-            
-            const fileRef = ref(storage, `${name}/${Date.now()}-${fileName || 'file'}`);
-            
-            const uploadTask = uploadBytes(fileRef, blob);
-            
-            uploadTask.on('state_changed', 
-                (snapshot) => {
-                    const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                    setUploadProgress(progress);
-                }
-            );
-            
-            await uploadTask;
-            const downloadURL = await getDownloadURL(fileRef);
-            
-            return downloadURL;
-        } catch (error) {
-            throw error;
         }
     };
 
@@ -264,7 +273,6 @@ export default function ChatScreen({ route, navigation }) {
                 };
     
                 await addDoc(collection(db, `s/${name}/messages`), imageMessage);
-                console.log("image has been uploaded")
                 await updateLatestMessage(imageMessage);
             }
         } catch (error) {
@@ -281,27 +289,24 @@ export default function ChatScreen({ route, navigation }) {
             const result = await DocumentPicker.getDocumentAsync();
             
             if (!result.canceled && result.assets[0]) {
-                const { name, size, uri, mimeType } = result.assets[0];
+                const { name: fileName, size, uri, mimeType } = result.assets[0];
                 
-                // Check file size (10MB limit)
-                if (size > 10 * 1024 * 1024) {
+                if (size > MAX_FILE_SIZE) {
                     throw new Error('File size exceeds 10MB limit');
                 }
     
-                // Upload document to Firebase Storage
                 const response = await fetch(uri);
                 const blob = await response.blob();
-                const docRef = ref(storage, `${name}/documents/${Date.now()}-${name}`);
+                const docRef = ref(storage, `${name}/documents/${Date.now()}-${fileName}`);
                 await uploadBytes(docRef, blob);
                 const downloadURL = await getDownloadURL(docRef);
                 
-                // Create and send document message
                 const documentMessage = {
                     text: '',
                     type: 'document',
-                    fileName: name,
+                    fileName,
                     fileSize: size,
-                    url: downloadURL,  // Use the Firebase Storage URL instead of local URI
+                    url: downloadURL,
                     mimeType,
                     sender: {
                         userID,
@@ -310,17 +315,15 @@ export default function ChatScreen({ route, navigation }) {
                     },
                     createdAt: serverTimestamp()
                 };
-                setMessages(prevMessages => [...prevMessages, documentMessage])
     
                 await addDoc(collection(db, `s/${name}/messages`), documentMessage);
                 await updateLatestMessage(documentMessage);
             }
         } catch (error) {
             console.error("Error sending document:", error);
-            Alert.alert('Error', error.message || 'Failed to send document. Please try again.');
+            Alert.alert('Error', 'Failed to send document. Please try again.');
         } finally {
             setIsLoading(false);
-            setUploadProgress(0);
         }
     };
 
@@ -367,7 +370,7 @@ export default function ChatScreen({ route, navigation }) {
                     {item.type === 'document' && (
                         <TouchableOpacity 
                             onPress={() => handleFileDownload(item.url, item.fileName)}
-                            className={`flex-row items-center p-2 ${isOwnMessage ? 'bg-blue-400' : 'bg-white'} rounded-lg mb-2`}
+                            className={`flex-row items-center p-2 ${isOwnMessage ? 'bg-blue-400' : 'bg-white'} rounded-lg mb-2 w-full`}
                         >
                             <Ionicons 
                                 name="document-text" 
@@ -375,7 +378,7 @@ export default function ChatScreen({ route, navigation }) {
                                 color={isOwnMessage ? "white" : "#666"} 
                                 style={{ marginRight: 8 }}
                             />
-                            <View className="flex-1">
+                            <View className="flex-1 w-full">
                                 <Text 
                                     className={`font-medium ${isOwnMessage ? 'text-white' : 'text-black'}`} 
                                     numberOfLines={1}
@@ -391,6 +394,38 @@ export default function ChatScreen({ route, navigation }) {
                                 size={20} 
                                 color={isOwnMessage ? "white" : "#666"}
                             />
+                        </TouchableOpacity>
+                    )}
+                    
+                    {item.type === 'video' && (
+                        <TouchableOpacity onPress={() => handleVideoPlay(item.url)}>
+                            <View className="relative w-48 h-48 rounded-lg mb-2 bg-black">
+                                {item.thumbnailURL && (
+                                    <Image 
+                                        source={{ uri: item.thumbnailURL }} 
+                                        className="w-full h-full rounded-lg"
+                                    />
+                                )}
+                                <View className="absolute inset-0 flex items-center justify-center">
+                                    <Ionicons name="play-circle" size={48} color="white" />
+                                </View>
+                            </View>
+                        </TouchableOpacity>
+                    )}
+                    
+                    {item.type === 'audio' && (
+                        <TouchableOpacity onPress={() => handleAudioPlay(item.url)}
+                            className={`flex-row items-center p-2 ${isOwnMessage ? 'bg-blue-400' : 'bg-white'} rounded-lg mb-2 w-full`}
+                        >
+                            <Ionicons 
+                                name="musical-note" 
+                                size={24} 
+                                color={isOwnMessage ? "white" : "#666"} 
+                                style={{ marginRight: 8 }}
+                            />
+                            <Text className={`font-medium ${isOwnMessage ? 'text-white' : 'text-black'}`}>
+                                Audio Message
+                            </Text>
                         </TouchableOpacity>
                     )}
                     
@@ -421,18 +456,123 @@ export default function ChatScreen({ route, navigation }) {
         </View>
     );
 
+    const toggleAttachMenu = useCallback(() => {
+        const newValue = !attachMedia;
+        setAttachMedia(newValue);
+    
+        Animated.spring(attachMenuAnimation, {
+            toValue: newValue ? 1 : 0,
+            useNativeDriver: true,
+            tension: 100,
+            friction: 6,
+        }).start();
+    }, [attachMedia]);
+
+    const handleMediaOption = (type) => {
+        switch (type) {
+            case 'image':
+                pickImage();
+                break;
+            case 'document':
+                pickDocument();
+                break;
+            case 'video':
+                pickVideo();
+                break;
+            case 'audio':
+                pickAudio();
+                break;
+            default:
+                console.warn('Unhandled media type:', type);
+        }
+        toggleAttachMenu();
+    };
+
+    const pickVideo = async () => {
+        try {
+            let result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+                allowsEditing: true,
+                quality: 1,
+            });
+    
+            if (!result.canceled && result.assets[0]) {
+                const thumbnail = await VideoThumbnails.getThumbnailAsync(result.assets[0].uri);
+                await uploadMedia(result.assets[0].uri, 'video', thumbnail.uri);
+            }
+        } catch (error) {
+            console.error("Error picking video:", error);
+            Alert.alert("Error", "Failed to pick video");
+        }
+    };
+
+    const pickAudio = async () => {
+        try {
+            let result = await DocumentPicker.getDocumentAsync({ type: 'audio/*' });
+    
+            if (!result.canceled && result.assets[0]) {
+                await uploadMedia(result.assets[0].uri, 'audio');
+            }
+        } catch (error) {
+            console.error("Error picking audio:", error);
+            Alert.alert("Error", "Failed to pick audio");
+        }
+    };
+
+    const uploadMedia = async (uri, type, thumbnailUri = null, fileName = null, mimeType = null) => {
+        try {
+            const response = await fetch(uri);
+            const blob = await response.blob();
+            const fileRef = ref(storage, `${type}/${Date.now()}_${fileName || 'media'}`);
+            await uploadBytes(fileRef, blob);
+            const mediaURL = await getDownloadURL(fileRef);
+            
+            let thumbnailURL = null;
+            if (thumbnailUri) {
+                const thumbnailResponse = await fetch(thumbnailUri);
+                const thumbnailBlob = await thumbnailResponse.blob();
+                const thumbnailRef = ref(storage, `thumbnails/${Date.now()}_thumbnail.jpg`);
+                await uploadBytes(thumbnailRef, thumbnailBlob);
+                thumbnailURL = await getDownloadURL(thumbnailRef);
+            }
+            
+            const mediaMessage = {
+                sender: {
+                    userID: userID,
+                    userName: userName,
+                    email: email
+                },
+                url: mediaURL,
+                thumbnailURL,
+                type: "video",
+                fileName,
+                mimeType: "video/mp4",
+                timestamp: new Date().getTime(),
+                id: uuid.v4(),
+            };
+
+
+            await addDoc(collection(db, `s/${name}/messages`), mediaMessage);
+            updateLatestMessage(mediaMessage)
+        } catch (error) {
+            console.error(`Error uploading ${type}:`, error);
+            Alert.alert("Error", `Failed to upload ${type}`);
+        }
+    };
+
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             className="flex-1"
             keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
         >
+            <StatusBar style='dark'/>
             <FlatList
                 ref={flatListRef}
                 data={groupedMessages}
                 keyExtractor={(item, index) => item.title + index}
                 renderItem={({ item: section }) => (
-                    <View key={section.id}>
+                    <View key={section.title}>
                         {renderHeader({ section })}
                         {section.data.map(message => renderMessage({ item: message }))}
                     </View>
@@ -453,14 +593,55 @@ export default function ChatScreen({ route, navigation }) {
                     </View>
                 </View>
             )}
+
+            <Animated.View
+                style={{
+                    opacity: attachMenuAnimation,
+                    transform: [{
+                        translateY: attachMenuAnimation.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [50, 0]
+                        })
+                    }],
+                    position: 'absolute',
+                    bottom: 70,
+                    left: 12,
+                    right: 12,
+                    zIndex: attachMenuAnimation.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-1, 1]
+                    })
+                }}
+                className="bg-[#0c5255] shadow-lg rounded-md overflow-hidden"
+            >
+                <View className="p-3">
+                    <FlatList
+                        data={MEDIA_OPTIONS}
+                        numColumns={3}
+                        keyExtractor={(item) => item.id.toString()}
+                        renderItem={({ item }) => (
+                            <TouchableOpacity 
+                                onPress={() => handleMediaOption(item.type)}
+                                style={{
+                                    flex: 1,
+                                    alignItems: 'center',
+                                    marginBottom: 20,
+                                    width: 80,
+                                    marginTop: 20,
+                                }}
+                            >
+                                <Ionicons name={item.icon} size={24} color="white" />
+                                <Text className="text-sm mt-1 text-white">{item.label}</Text>
+                            </TouchableOpacity>
+                        )}
+                    />
+                </View>
+            </Animated.View>
             
             <View className="flex-row items-center p-4 bg-white border-t border-gray-200">
-                <TouchableOpacity onPress={pickImage} className="mr-2">
-                    <Ionicons name="image" size={24} color="#666" />
+                <TouchableOpacity onPress={toggleAttachMenu} className="p-2">
+                    <Ionicons name="attach" size={24} color="gray" />
                 </TouchableOpacity>
-                {/* <TouchableOpacity onPress={pickDocument} className="mr-2">
-                    <Ionicons name="document-text" size={24} color="#666" />
-                </TouchableOpacity> */}
                 <TextInput
                     value={inputText}
                     onChangeText={setInputText}
